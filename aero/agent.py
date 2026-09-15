@@ -29,6 +29,17 @@ def _system_prompt(operator_authorized=False):
     )
 
 
+def _media_request(command):
+    match = re.match(
+        r"^Bas heeft een mediabijlage toegevoegd: (.+?)\nGebruik (analyze_(?:document|image|audio)) .*?\nVraag van Bas: (.*)$",
+        command,
+        re.S,
+    )
+    if not match:
+        return None
+    return match.group(2), match.group(1).strip(), match.group(3).strip()
+
+
 def _approval_command(command):
     approve = re.fullmatch(r"AERO_APPROVE\s+([0-9a-fA-F]{10})", command)
     cancel = re.fullmatch(r"AERO_CANCEL\s+([0-9a-fA-F]{10})", command)
@@ -70,6 +81,34 @@ def respond(message, operator_authorized=False):
         return "Aero staat in standby. Typ Activeer om mij te activeren."
 
     session_id = current_session_id()
+    media = _media_request(command)
+    if media:
+        if not operator_authorized:
+            return "Deze route heeft geen Aero-operatorrechten."
+        tool_name, path, question = media
+        try:
+            verified = execute(tool_name, {"path_value": path, "question": question})
+        except Exception as exc:
+            reply = f"Ik kon de bijlage niet analyseren: {type(exc).__name__}: {exc}"
+            save_message(session_id, "user", command)
+            save_message(session_id, "assistant", reply)
+            return reply
+        history = recent_messages(session_id, RECENT_HISTORY_MESSAGES)
+        prompt = (
+            f"Vraag van Bas: {question}\n\n"
+            f"Geverifieerde lokale analyse:\n{json.dumps(verified, ensure_ascii=False)}\n\n"
+            "Beantwoord Bas nu op basis van deze analyse. Verzín niets buiten de geverifieerde resultaten."
+        )
+        assistant = chat([
+            {"role": "system", "content": _system_prompt(True)},
+            *history,
+            {"role": "user", "content": prompt},
+        ])
+        reply = str(assistant.get("content") or "").strip() or "Analyse voltooid."
+        save_message(session_id, "user", command)
+        save_message(session_id, "assistant", reply)
+        return reply
+
     history = recent_messages(session_id, RECENT_HISTORY_MESSAGES)
     messages = [
         {"role": "system", "content": _system_prompt(operator_authorized)},

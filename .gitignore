@@ -8,3 +8,5 @@ data/state.json
 data/external_scopes.json
 runtime/
 *.bak
+data/*.jsonl
+data/uploads/

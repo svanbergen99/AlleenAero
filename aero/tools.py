@@ -3,8 +3,10 @@ import os
 import shutil
 import socket
 import subprocess
+import urllib.request
 from pathlib import Path
 
+from .audit import write as audit
 from .config import ROOT
 from .media import analyze_audio, analyze_document, analyze_image
 from .permissions import (
@@ -168,6 +170,71 @@ def gpu_info():
     return {"returncode": proc.returncode, "output": proc.stdout.strip(), "error": proc.stderr.strip()}
 
 
+def disk_info():
+    if os.name == "nt":
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-PSDrive -PSProvider FileSystem | Select-Object Name,Used,Free,Root | ConvertTo-Json -Compress"],
+            text=True, capture_output=True, timeout=15, check=False,
+        )
+        return json.loads(proc.stdout or "[]")
+    proc = subprocess.run(["df", "-h"], text=True, capture_output=True, timeout=10, check=False)
+    return proc.stdout
+
+
+def network_info():
+    if os.name == "nt":
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-NetIPConfiguration | Select-Object InterfaceAlias,IPv4Address,IPv6Address,DNSServer | ConvertTo-Json -Depth 4 -Compress"],
+            text=True, capture_output=True, timeout=15, check=False,
+        )
+        return json.loads(proc.stdout or "[]")
+    proc = subprocess.run(["ip", "addr"], text=True, capture_output=True, timeout=10, check=False)
+    return proc.stdout
+
+
+def list_services():
+    if os.name != "nt":
+        proc = subprocess.run(["systemctl", "--no-pager", "--plain", "list-units", "--type=service"],
+                              text=True, capture_output=True, timeout=15, check=False)
+        return proc.stdout
+    proc = subprocess.run(
+        ["powershell", "-NoProfile", "-Command",
+         "Get-Service | Select-Object Name,DisplayName,Status,StartType | ConvertTo-Json -Compress"],
+        text=True, capture_output=True, timeout=15, check=False,
+    )
+    return json.loads(proc.stdout or "[]")
+
+
+def service_status(name):
+    if os.name != "nt":
+        proc = subprocess.run(["systemctl", "status", str(name), "--no-pager"],
+                              text=True, capture_output=True, timeout=10, check=False)
+        return {"returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
+    safe = str(name).replace("'", "''")
+    proc = subprocess.run(
+        ["powershell", "-NoProfile", "-Command",
+         f"Get-Service -Name '{safe}' | Select-Object Name,DisplayName,Status,StartType | ConvertTo-Json -Compress"],
+        text=True, capture_output=True, timeout=10, check=False,
+    )
+    return json.loads(proc.stdout or "{}") if proc.returncode == 0 else {"error": proc.stderr.strip()}
+
+
+def dns_lookup(host):
+    return {"host": str(host), "addresses": sorted({item[4][0] for item in socket.getaddrinfo(str(host), None)})}
+
+
+def http_check(url):
+    request = urllib.request.Request(str(url), method="HEAD", headers={"User-Agent": "AlleenAero/1.0"})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return {
+            "url": response.geturl(),
+            "status": response.status,
+            "content_type": response.headers.get("Content-Type"),
+        }
+
+
 def list_external_scopes():
     return list_grants()
 
@@ -182,6 +249,12 @@ OBSERVE_TOOLS = {
     "list_processes": list_processes,
     "list_listeners": list_listeners,
     "gpu_info": gpu_info,
+    "disk_info": disk_info,
+    "network_info": network_info,
+    "list_services": list_services,
+    "service_status": service_status,
+    "dns_lookup": dns_lookup,
+    "http_check": http_check,
     "list_external_scopes": list_external_scopes,
     "analyze_document": analyze_document,
     "analyze_image": analyze_image,
@@ -230,6 +303,11 @@ def execute(name, args):
             {"path": str(target), "args": list(args.get("args") or [])},
             f"Start programma {target}",
         )
+    if name == "restart_service":
+        service = str(args.get("name") or "").strip()
+        if not service:
+            raise ValueError("service_name_required")
+        return request_action("restart_service", {"name": service}, f"Herstart Windows-service {service}")
     raise ValueError(f"unknown_tool:{name}")
 
 
@@ -244,24 +322,43 @@ def execute_approved(kind, args):
             shutil.rmtree(target)
         else:
             target.unlink()
-        return {"deleted": str(target)}
+        result = {"deleted": str(target)}
+        audit("approved_action", kind=kind, result=result)
+        return result
     if kind == "move_path":
         src = authorize_path(args["src"], write=True)
         dst = authorize_path(args["dst"], write=True)
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src), str(dst))
-        return {"src": str(src), "dst": str(dst)}
+        result = {"src": str(src), "dst": str(dst)}
+        audit("approved_action", kind=kind, result=result)
+        return result
     if kind == "kill_process":
         pid = int(args["pid"])
         if pid in {0, 4, os.getpid()}:
             raise PermissionError("critical_process_blocked")
         command = ["taskkill", "/PID", str(pid), "/F"] if os.name == "nt" else ["kill", "-TERM", str(pid)]
         proc = subprocess.run(command, text=True, capture_output=True, timeout=10, check=False)
-        return {"returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
+        result = {"returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
+        audit("approved_action", kind=kind, pid=pid, result=result)
+        return result
     if kind == "start_program":
         target = authorize_path(args["path"])
         proc = subprocess.Popen([str(target), *list(args.get("args") or [])], cwd=str(target.parent))
-        return {"pid": proc.pid, "path": str(target)}
+        result = {"pid": proc.pid, "path": str(target)}
+        audit("approved_action", kind=kind, result=result)
+        return result
+    if kind == "restart_service":
+        name = str(args["name"])
+        if os.name != "nt":
+            raise RuntimeError("restart_service_windows_only")
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", f"Restart-Service -Name '{name.replace(chr(39), chr(39)*2)}' -ErrorAction Stop"],
+            text=True, capture_output=True, timeout=30, check=False,
+        )
+        result = {"returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
+        audit("approved_action", kind=kind, service=name, result=result)
+        return result
     raise ValueError(f"unknown_approved_action:{kind}")
 
 
@@ -277,6 +374,13 @@ TOOL_SCHEMAS = {
     "list_processes": {"description": "List running processes.", "properties": {}, "required": []},
     "list_listeners": {"description": "List listening TCP ports.", "properties": {}, "required": []},
     "gpu_info": {"description": "Read NVIDIA GPU status using nvidia-smi.", "properties": {}, "required": []},
+    "disk_info": {"description": "Read disk/free-space information.", "properties": {}, "required": []},
+    "network_info": {"description": "Read local network interface configuration.", "properties": {}, "required": []},
+    "list_services": {"description": "List system services.", "properties": {}, "required": []},
+    "service_status": {"description": "Read one service status.", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+    "restart_service": {"description": "Request restart of a Windows service.", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+    "dns_lookup": {"description": "Resolve a hostname using the local resolver.", "properties": {"host": {"type": "string"}}, "required": ["host"]},
+    "http_check": {"description": "Check an HTTP/HTTPS URL.", "properties": {"url": {"type": "string"}}, "required": ["url"]},
     "list_external_scopes": {"description": "List owner-approved external folders.", "properties": {}, "required": []},
     "grant_external_scope": {"description": "Request owner approval for one exact external folder.", "properties": {"path": {"type": "string"}, "access": {"type": "string", "enum": ["read", "read_write"]}}, "required": ["path", "access"]},
     "revoke_external_scope": {"description": "Request revocation of an external folder grant.", "properties": {"path": {"type": "string"}}, "required": ["path"]},
@@ -316,13 +420,23 @@ def select_tool_names(message):
     if any(x in low for x in ("bestand", "file", "map", "folder", "repo", "project", "code", "script", "lees", "bekijk", "inspect", "analyse", "zoek", "search", "toon")):
         names.update(("list_dir", "read_file", "file_info", "search_text", "read_tree"))
     if any(x in low for x in ("schrijf", "write", "maak", "create", "wijzig", "change", "fix", "repareer")):
-        names.update(("write_text", "make_dir"))
+        names.update(("list_dir", "read_file", "file_info", "search_text", "read_tree", "write_text", "make_dir"))
     if any(x in low for x in ("proces", "process", "pid")):
         names.update(("list_processes", "kill_process"))
     if any(x in low for x in ("poort", "port", "listener")):
         names.add("list_listeners")
     if any(x in low for x in ("gpu", "vram", "nvidia")):
         names.add("gpu_info")
+    if any(x in low for x in ("disk", "schijf", "vrije ruimte", "opslag")):
+        names.add("disk_info")
+    if any(x in low for x in ("netwerk", "network", "ip-adres", "ip adres")):
+        names.add("network_info")
+    if any(x in low for x in ("service", "dienst")):
+        names.update(("list_services", "service_status", "restart_service"))
+    if any(x in low for x in ("dns", "hostname", "hostnaam")):
+        names.add("dns_lookup")
+    if any(x in low for x in ("http", "https", "url", "website")):
+        names.add("http_check")
     if any(x in low for x in ("systeem", "system", "computer", "pc")):
         names.add("system_info")
     if any(x in low for x in ("scope", "toegang", "external", "externe map")):

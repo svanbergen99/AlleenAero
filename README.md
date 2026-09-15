@@ -14,15 +14,17 @@ Schone, zelfstandige basis voor **Aero**. Geen Lord Commander, LCW, Mastermind o
 - Clean-slate origin: alleen `ORIGIN.md` bepaalt de basisidentiteit
 - Begrensde recente context en tool-loop
 - Dynamische toolselectie: gewone chat krijgt geen tool-schema's
-- Bestands-, project-, proces-, poort- en GPU-observatietools
+- Bestands-, project-, proces-, poort-, service-, netwerk-, disk- en GPU-observatietools
 - Schrijftools met backup van bestaande tekstbestanden
-- Owner-approval voor verwijderen, verplaatsen, process kill, programma starten en externe scopes
+- Owner-approval voor verwijderen, verplaatsen, process kill, service restart, programma starten en externe scopes
+- JSONL-auditlog voor approvals en kritieke acties
 - Loopback operator-cookie voor lokale bediening
 - Activeer/deactiveer status
 - Stale-safe runtime lock: dode PID-locks worden automatisch opgeschoond
 - Documentanalyse voor tekst/PDF/DOCX
 - Optionele lokale vision-service en audio-transcriptie
-- Unit tests voor memory, runtime locks en toolselectie
+- Unit tests voor memory, runtime locks, permissions, auth en toolselectie
+- GitHub Actions syntax- en unittest-check
 
 ## Starten
 

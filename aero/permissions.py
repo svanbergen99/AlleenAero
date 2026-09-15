@@ -4,6 +4,7 @@ import threading
 import time
 from pathlib import Path
 
+from .audit import write as audit
 from .config import APPROVAL_TTL_SECONDS, GRANTS_FILE, ROOT
 
 _PENDING = {}
@@ -88,6 +89,7 @@ def request_action(kind, args, summary):
             "summary": str(summary),
             "expires_at": expires_at,
         }
+    audit("approval_requested", approval_id=approval_id, kind=str(kind), summary=str(summary))
     return {
         "approval_required": True,
         "approval_id": approval_id,
@@ -102,13 +104,17 @@ def consume_approval(approval_id):
     if not item:
         raise ValueError("approval_not_found")
     if time.time() > float(item["expires_at"]):
+        audit("approval_expired", approval_id=str(approval_id), kind=item.get("kind"))
         raise ValueError("approval_expired")
+    audit("approval_consumed", approval_id=str(approval_id), kind=item.get("kind"))
     return item
 
 
 def cancel_approval(approval_id):
     with _LOCK:
-        return _PENDING.pop(str(approval_id), None) is not None
+        removed = _PENDING.pop(str(approval_id), None) is not None
+    audit("approval_cancelled", approval_id=str(approval_id), found=removed)
+    return removed
 
 
 def grant_external_scope(path_value, access):
@@ -120,6 +126,7 @@ def grant_external_scope(path_value, access):
     grants = [g for g in _load_grants() if Path(g["path"]).resolve(strict=False) != path]
     grants.append({"path": str(path), "access": access})
     _save_grants(grants)
+    audit("external_scope_granted", path=str(path), access=access)
     return {"path": str(path), "access": access}
 
 
@@ -128,4 +135,6 @@ def revoke_external_scope(path_value):
     grants = _load_grants()
     updated = [g for g in grants if Path(g["path"]).resolve(strict=False) != path]
     _save_grants(updated)
-    return {"revoked": len(updated) != len(grants), "path": str(path)}
+    revoked = len(updated) != len(grants)
+    audit("external_scope_revoked", path=str(path), revoked=revoked)
+    return {"revoked": revoked, "path": str(path)}
