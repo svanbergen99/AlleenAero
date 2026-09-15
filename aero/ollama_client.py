@@ -11,6 +11,7 @@ from .config import (
     REQUEST_TIMEOUT_SECONDS,
     THINK,
 )
+from .runtime_lock import runtime_lock
 
 
 def chat(messages, tools=None):
@@ -28,24 +29,25 @@ def chat(messages, tools=None):
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     last_error = None
 
-    for attempt in range(3):
-        request = urllib.request.Request(
-            OLLAMA_URL,
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-                data = json.loads(response.read().decode("utf-8"))
-            return data["message"]
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            last_error = RuntimeError(f"Ollama HTTP {exc.code}: {detail[:500]}")
-        except (urllib.error.URLError, TimeoutError) as exc:
-            last_error = exc
+    with runtime_lock("ollama-text", timeout=120, stale_after=300):
+        for attempt in range(3):
+            request = urllib.request.Request(
+                OLLAMA_URL,
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                return data["message"]
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")
+                last_error = RuntimeError(f"Ollama HTTP {exc.code}: {detail[:500]}")
+            except (urllib.error.URLError, TimeoutError) as exc:
+                last_error = exc
 
-        if attempt < 2:
-            time.sleep(1.5 * (attempt + 1))
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
 
     raise last_error or RuntimeError("Ollama request failed")
