@@ -5,18 +5,18 @@ from .config import MAX_AGENT_STEPS, MAX_TOOL_CALLS, ORIGIN_FILE, PROJECT_ROOT, 
 from .identity_guard import collapses_identity, identity_policy_text, rewrite_instruction
 from .memory import current_session_id, recent_messages, save_message
 from .ollama_client import chat
+from .owner_tools import execute, execute_approved, schemas, select_tool_names
 from .permissions import cancel_approval, consume_approval
 from .state import is_active, set_active
-from .owner_tools import execute, execute_approved, schemas, select_tool_names
-from .tools import execute as execute_legacy
 
 
 def _system_prompt(operator_authorized=False):
     origin = ORIGIN_FILE.read_text(encoding="utf-8").strip()
     mode = (
-        "Je werkt in lokale owner-operator modus. Iedere lokale file- of execute-actie vraagt eerst expliciete approval. "
-        f"Je primaire projectscope is {PROJECT_ROOT}. Buiten die scope mag je alleen een concrete actie voorstellen; "
-        "je voert buiten de scope niets uit voordat Bas die exacte actie goedkeurt. Vrije shell-commando's zijn niet beschikbaar."
+        "Je werkt in lokale owner-operator modus. Iedere lokale capability vraagt eerst expliciete owner-approval. "
+        f"Je primaire projectscope is {PROJECT_ROOT}. Buiten die scope mag je een concrete actie voorstellen als Bas erom vraagt "
+        "of als dat aantoonbaar nodig is voor de huidige taak, maar je voert die actie nooit uit voordat Bas exact die actie goedkeurt. "
+        "Je hebt file-, development-, package-, database-, process-, netwerk-, monitoring-, service-, Git-, shell-, clipboard-, archive- en media-capabilities."
         if operator_authorized
         else "Deze route heeft geen pc-operatorrechten. Je mag normaal praten maar geen lokale tools uitvoeren."
     )
@@ -29,10 +29,11 @@ def _system_prompt(operator_authorized=False):
         + "- Verzín geen systeemstatus, bestanden, geheugen of toolresultaten.\n"
         + "- Technische modellen en runtimes zijn jouw motor, niet jouw identiteit.\n"
         + "- Gebruik tools wanneer actuele lokale informatie of een lokale actie nodig is.\n"
-        + "- Een toolcall voert de actie nog niet uit: hij maakt eerst een owner-approval aan.\n"
-        + "- Approval geldt alleen voor de exacte voorgestelde actie en argumenten.\n"
-        + "- Als een pad buiten de projectscope ligt, zeg duidelijk waarom dat nodig is en vraag approval voordat je leest, schrijft of uitvoert.\n"
-        + "- Voor execute_file geldt: approval voor uitvoering betekent ook approval voor het gedrag van dat script/programmaatje zelf.\n"
+        + "- Een toolcall voert nooit meteen uit: hij maakt eerst een eenmalige owner-approval voor de exacte actie en argumenten.\n"
+        + "- Ook lezen, inspecteren, monitoren en netwerkchecks vragen approval.\n"
+        + "- Buiten de projectscope moet de approval duidelijk vermelden dat de actie buiten de primaire scope gaat.\n"
+        + "- run_command en execute/start-process zijn krachtige capabilities; approval geldt voor het volledige gedrag van het exacte commando of programma.\n"
+        + "- Claim nooit een uitgevoerde actie zonder geverifieerd toolresultaat.\n"
         + "- Houd gewone antwoorden compact tenzij Bas om detail vraagt.\n"
         + f"- {mode}\n"
     )
@@ -42,7 +43,6 @@ def _identity_safe_reply(reply, system_prompt):
     text = str(reply or "").strip()
     if not text or not collapses_identity(text):
         return text
-
     repair_messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": rewrite_instruction(text)},
@@ -54,15 +54,8 @@ def _identity_safe_reply(reply, system_prompt):
             return candidate
         repair_messages.extend([
             {"role": "assistant", "content": candidate},
-            {
-                "role": "user",
-                "content": (
-                    "Formuleer opnieuw als Aero. Benoem alleen de concrete operationele beperking. "
-                    "Gebruik geen taalmodel/AI-model-identiteitsdisclaimer en verzin geen capabilities."
-                ),
-            },
+            {"role": "user", "content": "Formuleer opnieuw als Aero. Benoem alleen de concrete operationele beperking. Gebruik geen taalmodel/AI-model-identiteitsdisclaimer en verzin geen capabilities."},
         ])
-
     return (
         "Mijn antwoordguard heeft een onjuiste identiteitsformulering geblokkeerd. "
         "Ik geef daarom geen ongeverifieerde claim door; benoem de concrete taak nogmaals zodat ik de operationele beperking kan vaststellen."
@@ -97,8 +90,24 @@ def _tool_reply(result):
     return None
 
 
+def _media_answer(result, question, system_prompt, session_id):
+    history = recent_messages(session_id, RECENT_HISTORY_MESSAGES)
+    prompt = (
+        f"Vraag van Bas: {question or 'Analyseer deze bijlage.'}\n\n"
+        f"Geverifieerde lokale analyse:\n{json.dumps(result, ensure_ascii=False)}\n\n"
+        "Beantwoord Bas nu op basis van deze geverifieerde analyse. Verzín niets buiten de resultaten."
+    )
+    assistant = chat([
+        {"role": "system", "content": system_prompt},
+        *history,
+        {"role": "user", "content": prompt},
+    ])
+    return _identity_safe_reply(str(assistant.get("content") or "").strip() or "Analyse voltooid.", system_prompt)
+
+
 def respond(message, operator_authorized=False):
     command = str(message).strip()
+    system_prompt = _system_prompt(operator_authorized)
 
     if command.lower() in {"activeer", "activeer aero"}:
         set_active(True)
@@ -115,41 +124,28 @@ def respond(message, operator_authorized=False):
             return "Actie geannuleerd." if cancel_approval(cancel.group(1)) else "Approval niet gevonden."
         item = consume_approval(approve.group(1))
         result = execute_approved(item["kind"], item["args"])
+        if item["kind"] in {"analyze_document", "analyze_image", "analyze_audio"}:
+            session_id = current_session_id()
+            reply = _media_answer(result, item["args"].get("question", ""), system_prompt, session_id)
+            save_message(session_id, "assistant", reply)
+            return reply
         return "Goedgekeurde actie uitgevoerd:\n" + json.dumps(result, ensure_ascii=False, indent=2)
 
     if not is_active():
         return "Aero staat in standby. Typ Activeer om mij te activeren."
 
     session_id = current_session_id()
-    system_prompt = _system_prompt(operator_authorized)
     media = _media_request(command)
     if media:
         if not operator_authorized:
             return "Deze route heeft geen Aero-operatorrechten."
         tool_name, path, question = media
-        try:
-            verified = execute_legacy(tool_name, {"path_value": path, "question": question})
-        except Exception as exc:
-            reply = f"Ik kon de bijlage niet analyseren: {type(exc).__name__}: {exc}"
+        result = execute(tool_name, {"path_value": path, "question": question})
+        approval_reply = _tool_reply(result)
+        if approval_reply:
             save_message(session_id, "user", command)
-            save_message(session_id, "assistant", reply)
-            return reply
-        history = recent_messages(session_id, RECENT_HISTORY_MESSAGES)
-        prompt = (
-            f"Vraag van Bas: {question}\n\n"
-            f"Geverifieerde lokale analyse:\n{json.dumps(verified, ensure_ascii=False)}\n\n"
-            "Beantwoord Bas nu op basis van deze analyse. Verzín niets buiten de geverifieerde resultaten."
-        )
-        assistant = chat([
-            {"role": "system", "content": system_prompt},
-            *history,
-            {"role": "user", "content": prompt},
-        ])
-        reply = str(assistant.get("content") or "").strip() or "Analyse voltooid."
-        reply = _identity_safe_reply(reply, system_prompt)
-        save_message(session_id, "user", command)
-        save_message(session_id, "assistant", reply)
-        return reply
+            save_message(session_id, "assistant", approval_reply)
+            return approval_reply
 
     history = recent_messages(session_id, RECENT_HISTORY_MESSAGES)
     messages = [
@@ -157,7 +153,6 @@ def respond(message, operator_authorized=False):
         *history,
         {"role": "user", "content": command},
     ]
-
     tool_names = select_tool_names(command) if operator_authorized else []
     tools = schemas(tool_names) if tool_names else None
     tool_calls_used = 0
@@ -166,16 +161,12 @@ def respond(message, operator_authorized=False):
     for _ in range(MAX_AGENT_STEPS):
         assistant = chat(messages, tools)
         calls = assistant.get("tool_calls") or []
-
         if not calls:
-            reply = str(assistant.get("content") or "").strip()
-            if not reply:
-                reply = "Ik kreeg geen bruikbaar modelantwoord terug."
+            reply = str(assistant.get("content") or "").strip() or "Ik kreeg geen bruikbaar modelantwoord terug."
             reply = _identity_safe_reply(reply, system_prompt)
             save_message(session_id, "user", command)
             save_message(session_id, "assistant", reply)
             return reply
-
         if not operator_authorized:
             return "Deze route heeft geen Aero-operatorrechten."
 
@@ -189,7 +180,6 @@ def respond(message, operator_authorized=False):
                     args = json.loads(args)
                 except Exception:
                     args = {}
-
             key = name + ":" + json.dumps(args, sort_keys=True, ensure_ascii=False)
             if key in seen:
                 result = seen[key]
@@ -202,24 +192,18 @@ def respond(message, operator_authorized=False):
                     result = {"error": f"{type(exc).__name__}: {exc}"}
                 seen[key] = result
                 tool_calls_used += 1
-
             approval_reply = _tool_reply(result)
             if approval_reply:
                 save_message(session_id, "user", command)
                 save_message(session_id, "assistant", approval_reply)
                 return approval_reply
-
-            messages.append({
-                "role": "tool",
-                "tool_name": name,
-                "content": json.dumps(result, ensure_ascii=False),
-            })
+            messages.append({"role": "tool", "tool_name": name, "content": json.dumps(result, ensure_ascii=False)})
 
         messages.append({
             "role": "user",
             "content": (
                 f"Original request from Bas: {command}\n\n"
-                "Gebruik alleen geverifieerde resultaten. Als een lokale actie nodig is, vraag approval via de juiste tool. "
+                "Gebruik alleen geverifieerde resultaten. Als een lokale actie nodig is, vraag approval via de juiste capability. "
                 "Voer niets lokaal uit zonder approval."
             ),
         })
