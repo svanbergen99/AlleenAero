@@ -1,19 +1,21 @@
 import json
 import re
 
-from .config import MAX_AGENT_STEPS, MAX_TOOL_CALLS, ORIGIN_FILE, RECENT_HISTORY_MESSAGES
+from .config import MAX_AGENT_STEPS, MAX_TOOL_CALLS, ORIGIN_FILE, PROJECT_ROOT, RECENT_HISTORY_MESSAGES
 from .memory import current_session_id, recent_messages, save_message
 from .ollama_client import chat
 from .permissions import cancel_approval, consume_approval
 from .state import is_active, set_active
-from .tools import execute, execute_approved, schemas, select_tool_names
+from .owner_tools import execute, execute_approved, schemas, select_tool_names
+from .tools import execute as execute_legacy
 
 
 def _system_prompt(operator_authorized=False):
     origin = ORIGIN_FILE.read_text(encoding="utf-8").strip()
     mode = (
-        "Je werkt in lokale owner-operator modus. Gebruik alleen de aangeboden capabilities. "
-        "Verzín nooit toolresultaten. Kritieke acties vereisen expliciete approval."
+        "Je werkt in lokale owner-operator modus. Iedere lokale file- of execute-actie vraagt eerst expliciete approval. "
+        f"Je primaire projectscope is {PROJECT_ROOT}. Buiten die scope mag je alleen een concrete actie voorstellen; "
+        "je voert buiten de scope niets uit voordat Bas die exacte actie goedkeurt. Vrije shell-commando's zijn niet beschikbaar."
         if operator_authorized
         else "Deze route heeft geen pc-operatorrechten. Je mag normaal praten maar geen lokale tools uitvoeren."
     )
@@ -23,7 +25,11 @@ def _system_prompt(operator_authorized=False):
         + "- Je bent Aero. Antwoord direct op Bas zijn actuele verzoek.\n"
         + "- Verzín geen systeemstatus, bestanden, geheugen of toolresultaten.\n"
         + "- Technische modellen en runtimes zijn jouw motor, niet jouw identiteit.\n"
-        + "- Gebruik tools alleen wanneer actuele lokale informatie of een lokale actie nodig is.\n"
+        + "- Gebruik tools wanneer actuele lokale informatie of een lokale actie nodig is.\n"
+        + "- Een toolcall voert de actie nog niet uit: hij maakt eerst een owner-approval aan.\n"
+        + "- Approval geldt alleen voor de exacte voorgestelde actie en argumenten.\n"
+        + "- Als een pad buiten de projectscope ligt, zeg duidelijk waarom dat nodig is en vraag approval voordat je leest, schrijft of uitvoert.\n"
+        + "- Voor execute_file geldt: approval voor uitvoering betekent ook approval voor het gedrag van dat script/programmaatje zelf.\n"
         + "- Houd gewone antwoorden compact tenzij Bas om detail vraagt.\n"
         + f"- {mode}\n"
     )
@@ -62,7 +68,7 @@ def respond(message, operator_authorized=False):
 
     if command.lower() in {"activeer", "activeer aero"}:
         set_active(True)
-        return "Aero actief."
+        return f"Aero actief. Projectscope: {PROJECT_ROOT}"
     if command.lower() == "deactiveer":
         set_active(False)
         return "Aero staat nu in standby."
@@ -87,7 +93,7 @@ def respond(message, operator_authorized=False):
             return "Deze route heeft geen Aero-operatorrechten."
         tool_name, path, question = media
         try:
-            verified = execute(tool_name, {"path_value": path, "question": question})
+            verified = execute_legacy(tool_name, {"path_value": path, "question": question})
         except Exception as exc:
             reply = f"Ik kon de bijlage niet analyseren: {type(exc).__name__}: {exc}"
             save_message(session_id, "user", command)
@@ -176,8 +182,8 @@ def respond(message, operator_authorized=False):
             "role": "user",
             "content": (
                 f"Original request from Bas: {command}\n\n"
-                "Gebruik de geverifieerde toolresultaten hierboven. "
-                "Herhaal geen succesvolle toolcall. Als je genoeg weet, antwoord nu."
+                "Gebruik alleen geverifieerde resultaten. Als een lokale actie nodig is, vraag approval via de juiste tool. "
+                "Voer niets lokaal uit zonder approval."
             ),
         })
 
