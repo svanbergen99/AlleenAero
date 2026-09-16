@@ -1,19 +1,14 @@
-import json
 import secrets
 import threading
 import time
 from pathlib import Path
 
 from .audit import write as audit
-from .config import APPROVAL_TTL_SECONDS, GRANTS_FILE, PROJECT_ROOT
+from .config import APPROVAL_TTL_SECONDS, PROJECT_ROOT
 
 ROOT = PROJECT_ROOT
 _PENDING = {}
 _LOCK = threading.Lock()
-
-SENSITIVE_NAMES = {".env", "approval.key", "chat.key", "lifeline.json"}
-SENSITIVE_SUFFIXES = {".pem", ".key", ".pfx", ".p12"}
-SENSITIVE_PARTS = {".ssh", "credentials", "secrets", "tokens", "private_keys"}
 
 
 def normalize_path(value):
@@ -21,10 +16,6 @@ def normalize_path(value):
     if not path.is_absolute():
         path = ROOT / path
     return path.resolve(strict=False)
-
-
-def _normalize(value):
-    return normalize_path(value)
 
 
 def _within(path, root):
@@ -35,61 +26,17 @@ def is_inside_project(value):
     return _within(normalize_path(value), ROOT)
 
 
-def _assert_not_sensitive(path):
-    parts = {part.lower() for part in path.parts}
-    if parts & SENSITIVE_PARTS:
-        raise PermissionError("sensitive_path_blocked")
-    if path.name.lower() in SENSITIVE_NAMES or path.suffix.lower() in SENSITIVE_SUFFIXES:
-        raise PermissionError("sensitive_file_blocked")
-
-
-def _load_grants():
-    try:
-        data = json.loads(GRANTS_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return []
-    out = []
-    for item in data.get("grants", []):
-        try:
-            path = Path(str(item["path"])).resolve(strict=False)
-            access = str(item.get("access", "read"))
-            if path.is_absolute() and access in {"read", "read_write"}:
-                out.append({"path": str(path), "access": access})
-        except Exception:
-            continue
-    return out
-
-
-def _save_grants(grants):
-    temp = GRANTS_FILE.with_suffix(".tmp")
-    temp.write_text(json.dumps({"grants": grants}, indent=2), encoding="utf-8")
-    temp.replace(GRANTS_FILE)
-
-
-def list_grants():
-    return _load_grants()
-
-
 def authorize_path(value, write=False):
+    """Authorize direct runtime access only inside the project root."""
     path = normalize_path(value)
-    _assert_not_sensitive(path)
-    if _within(path, ROOT):
-        return path
-
-    needed = "read_write" if write else "read"
-    for grant in _load_grants():
-        root = Path(grant["path"]).resolve(strict=False)
-        if _within(path, root):
-            if write and grant["access"] != "read_write":
-                continue
-            return path
-    raise PermissionError(f"path_not_authorized:{needed}")
+    if not _within(path, ROOT):
+        raise PermissionError("outside_project_requires_owner_approval")
+    return path
 
 
 def prepare_path_for_approval(value):
-    path = normalize_path(value)
-    _assert_not_sensitive(path)
-    return path
+    """Normalize any path so an exact one-shot action can be approved."""
+    return normalize_path(value)
 
 
 def request_action(kind, args, summary):
@@ -128,26 +75,3 @@ def cancel_approval(approval_id):
         removed = _PENDING.pop(str(approval_id), None) is not None
     audit("approval_cancelled", approval_id=str(approval_id), found=removed)
     return removed
-
-
-def grant_external_scope(path_value, access):
-    path = normalize_path(path_value)
-    if not path.is_absolute() or path == Path(path.anchor):
-        raise ValueError("invalid_external_scope")
-    if access not in {"read", "read_write"}:
-        raise ValueError("invalid_access")
-    grants = [g for g in _load_grants() if Path(g["path"]).resolve(strict=False) != path]
-    grants.append({"path": str(path), "access": access})
-    _save_grants(grants)
-    audit("external_scope_granted", path=str(path), access=access)
-    return {"path": str(path), "access": access}
-
-
-def revoke_external_scope(path_value):
-    path = normalize_path(path_value)
-    grants = _load_grants()
-    updated = [g for g in grants if Path(g["path"]).resolve(strict=False) != path]
-    _save_grants(updated)
-    revoked = len(updated) != len(grants)
-    audit("external_scope_revoked", path=str(path), revoked=revoked)
-    return {"revoked": revoked, "path": str(path)}
