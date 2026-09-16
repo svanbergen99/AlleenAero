@@ -7,7 +7,6 @@ RUNTIME_DIR = ROOT / "runtime"
 ORIGIN_FILE = ROOT / "ORIGIN.md"
 DB_FILE = DATA_DIR / "aero.db"
 STATE_FILE = DATA_DIR / "state.json"
-GRANTS_FILE = DATA_DIR / "external_scopes.json"
 UPLOAD_DIR = DATA_DIR / "uploads"
 
 
@@ -16,15 +15,7 @@ def _project_root():
     if configured:
         return Path(configured).expanduser().resolve(strict=False)
     if os.name == "nt":
-        # Support both spellings used on the current machine; prefer D:\ProjectAI
-        # when it exists, otherwise the verified legacy D:\Project AI location.
-        compact = Path(r"D:\ProjectAI")
-        legacy = Path(r"D:\Project AI")
-        if compact.exists():
-            return compact.resolve(strict=False)
-        if legacy.exists():
-            return legacy.resolve(strict=False)
-        return compact.resolve(strict=False)
+        return Path(r"D:\ProjectAI").resolve(strict=False)
     return ROOT.resolve(strict=False)
 
 
