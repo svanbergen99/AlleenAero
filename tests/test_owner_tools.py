@@ -1,10 +1,10 @@
-import tempfile
+﻿import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import aero.owner_tools as owner_tools
-import aero.permissions as permissions
+import owner_tools as owner_tools
+import permissions as permissions
 
 
 class OwnerToolApprovalTests(unittest.TestCase):
@@ -65,3 +65,4 @@ class OwnerToolApprovalTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

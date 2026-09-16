@@ -1,8 +1,8 @@
-import sqlite3
+﻿import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from .config import DB_FILE
+from config import DB_FILE
 
 
 @contextmanager
@@ -72,3 +72,4 @@ def recent_messages(session_id, limit):
         ).fetchall()
     rows = list(reversed(rows))
     return [{"role": row["role"], "content": row["content"]} for row in rows]
+

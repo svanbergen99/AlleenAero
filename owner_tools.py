@@ -1,4 +1,4 @@
-import ast
+﻿import ast
 import base64
 import fnmatch
 import json
@@ -14,10 +14,10 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from .audit import write as audit
-from .config import PROJECT_ROOT
-from .media import analyze_audio, analyze_document, analyze_image
-from .permissions import is_inside_project, prepare_path_for_approval, request_action
+from audit import write as audit
+from config import PROJECT_ROOT
+from media import analyze_audio, analyze_document, analyze_image
+from permissions import is_inside_project, prepare_path_for_approval, request_action
 
 TEXT_EXTS = {
     ".md", ".txt", ".py", ".json", ".toml", ".yaml", ".yml", ".ini", ".cfg",
@@ -451,7 +451,7 @@ TOOL_SCHEMAS = {
     "replace_text": _s("Gericht tekst vervangen met syntax-precheck.", {"path": {"type": "string"}, "old": {"type": "string"}, "new": {"type": "string"}, "count": {"type": "integer"}}, ["path", "old", "new"]),
     "write_bytes": _s("Binaire inhoud schrijven vanuit base64.", {"path": {"type": "string"}, "base64": {"type": "string"}}, ["path", "base64"]),
     "make_dir": _s("Map maken.", {"path": {"type": "string"}}, ["path"]),
-    "copy_path": _s("Bestand/map kopiëren.", {"src": {"type": "string"}, "dst": {"type": "string"}, "merge": {"type": "boolean"}}, ["src", "dst"]),
+    "copy_path": _s("Bestand/map kopiÃ«ren.", {"src": {"type": "string"}, "dst": {"type": "string"}, "merge": {"type": "boolean"}}, ["src", "dst"]),
     "move_path": _s("Bestand/map verplaatsen.", {"src": {"type": "string"}, "dst": {"type": "string"}}, ["src", "dst"]),
     "rename_path": _s("Bestand/map hernoemen.", {"src": {"type": "string"}, "dst": {"type": "string"}}, ["src", "dst"]),
     "delete_path": _s("Bestand/map verwijderen.", {"path": {"type": "string"}}, ["path"]),
@@ -526,3 +526,4 @@ def select_tool_names(message):
     if any(word in low for word in ("diagnose", "onderzoek", "probleem", "werkt niet", "alles controleren")):
         names.update({"resource_monitor", "gpu_info", "list_processes", "port_check", "tail_log", "find_files", "search_text", "syntax_check"})
     return sorted(names)
+

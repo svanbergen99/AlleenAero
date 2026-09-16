@@ -1,7 +1,7 @@
-import os
+﻿import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 RUNTIME_DIR = ROOT / "runtime"
 ORIGIN_FILE = ROOT / "ORIGIN.md"
@@ -43,3 +43,5 @@ MEDIA_MAX_BYTES = int(os.environ.get("AERO_MEDIA_MAX_BYTES", str(80 * 1024 * 102
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+

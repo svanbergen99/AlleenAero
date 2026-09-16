@@ -1,10 +1,10 @@
-import secrets
+﻿import secrets
 import threading
 import time
 from pathlib import Path
 
-from .audit import write as audit
-from .config import APPROVAL_TTL_SECONDS, PROJECT_ROOT
+from audit import write as audit
+from config import APPROVAL_TTL_SECONDS, PROJECT_ROOT
 
 ROOT = PROJECT_ROOT
 _PENDING = {}
@@ -75,3 +75,4 @@ def cancel_approval(approval_id):
         removed = _PENDING.pop(str(approval_id), None) is not None
     audit("approval_cancelled", approval_id=str(approval_id), found=removed)
     return removed
+

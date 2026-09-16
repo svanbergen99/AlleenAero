@@ -1,4 +1,4 @@
-import ipaddress
+﻿import ipaddress
 import secrets
 
 OPERATOR_TOKEN = secrets.token_urlsafe(32)
@@ -30,3 +30,4 @@ def is_operator(handler):
     target = f"{COOKIE_NAME}={OPERATOR_TOKEN}"
     cookie = handler.headers.get("Cookie") or ""
     return any(part.strip() == target for part in cookie.split(";"))
+

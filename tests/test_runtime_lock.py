@@ -1,11 +1,11 @@
-import json
+﻿import json
 import tempfile
 import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import aero.runtime_lock as locks
+import runtime_lock as locks
 
 
 class RuntimeLockTests(unittest.TestCase):
@@ -23,3 +23,4 @@ class RuntimeLockTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
