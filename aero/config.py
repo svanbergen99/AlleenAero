@@ -15,7 +15,7 @@ def _project_root():
     if configured:
         return Path(configured).expanduser().resolve(strict=False)
     if os.name == "nt":
-        return Path(r"D:\Project AI").resolve(strict=False)
+        return Path(r"D:\ProjectAI").resolve(strict=False)
     return ROOT.resolve(strict=False)
 
 
