@@ -1,6 +1,6 @@
 # AlleenAero
 
-Schone, zelfstandige basis voor **Aero**. Geen Lord Commander, LCW, Mastermind of legacy-identiteit.
+Schone, zelfstandige basis voor **Aero**.
 
 ## Wat deze repo bevat
 
