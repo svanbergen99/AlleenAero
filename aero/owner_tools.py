@@ -25,6 +25,15 @@ TEXT_EXTS = {
     ".ps1", ".cmd", ".bat", ".log", ".env",
 }
 
+DIRECT_PROJECT_TOOLS = {
+    "list_dir", "file_info", "read_text", "read_bytes", "find_files", "search_text", "tail_log",
+    "write_text", "append_text", "replace_text", "write_bytes", "make_dir",
+    "copy_path", "move_path", "rename_path", "delete_path",
+    "syntax_check", "json_query", "zip_create", "zip_extract",
+    "env_get", "env_set", "env_delete",
+    "analyze_document", "analyze_image", "analyze_audio",
+}
+
 
 def _path(value):
     return prepare_path_for_approval(value)
@@ -180,7 +189,27 @@ def execute(name, args):
         path_fields[name] = (("path", args.get("path")), ("cwd", args.get("cwd") or Path(args.get("path") or PROJECT_ROOT).parent))
     if name not in summaries:
         raise ValueError(f"unknown_tool:{name}")
-    return _request(name, args, summaries[name], path_fields.get(name, ()))
+
+    paths = path_fields.get(name, ())
+    if name in DIRECT_PROJECT_TOOLS and paths:
+        normalized = dict(args)
+        for key, value in paths:
+            target = _path(value if value not in {None, ""} else PROJECT_ROOT)
+            normalized[key] = str(target)
+            if not is_inside_project(target):
+                break
+        else:
+            result = _execute_approved(name, normalized)
+            safe_args = {k: v for k, v in normalized.items() if k not in {"content", "base64", "value", "body"}}
+            audit(
+                "direct_project_action",
+                kind=name,
+                args=safe_args,
+                result=result if isinstance(result, dict) else {"items": len(result) if hasattr(result, "__len__") else 1},
+            )
+            return result
+
+    return _request(name, args, summaries[name], paths)
 
 
 def execute_approved(kind, args):
