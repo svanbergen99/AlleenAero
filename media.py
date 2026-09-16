@@ -1,10 +1,10 @@
-import base64
+﻿import base64
 import json
 import urllib.request
 from pathlib import Path
 
-from .config import MEDIA_MAX_BYTES, VISION_BASE_URL, VISION_MODEL
-from .permissions import prepare_path_for_approval
+from config import MEDIA_MAX_BYTES, VISION_BASE_URL, VISION_MODEL
+from permissions import prepare_path_for_approval
 
 TEXT_DOC_EXTS = {".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".xml", ".html", ".css", ".py", ".js", ".ts", ".toml", ".ini", ".cfg"}
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -91,3 +91,4 @@ def analyze_audio(path_value, question="Transcribeer deze audio."):
         "text": text,
         "question": question,
     }
+

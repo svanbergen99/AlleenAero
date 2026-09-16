@@ -1,9 +1,9 @@
-import tempfile
+﻿import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import aero.memory as memory
+import memory as memory
 
 
 class MemoryTests(unittest.TestCase):
@@ -26,3 +26,4 @@ class MemoryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

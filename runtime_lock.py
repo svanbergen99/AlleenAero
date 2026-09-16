@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import shutil
 import subprocess
@@ -6,7 +6,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from .config import RUNTIME_DIR
+from config import RUNTIME_DIR
 
 
 def _pid_running(pid):
@@ -61,3 +61,4 @@ def runtime_lock(name="gpu", timeout=120, stale_after=300):
         yield
     finally:
         shutil.rmtree(lock_dir, ignore_errors=True)
+

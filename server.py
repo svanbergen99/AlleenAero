@@ -1,16 +1,16 @@
-import base64
+﻿import base64
 import json
 import re
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .agent import respond
-from .auth import cookie_header, is_operator
-from .config import HOST, KEEP_ALIVE, MEDIA_MAX_BYTES, MODEL, NUM_CTX, PORT, THINK, UPLOAD_DIR
-from .memory import initialize
-from .permissions import authorize_path
-from .state import is_active
+from agent import respond
+from auth import cookie_header, is_operator
+from config import HOST, KEEP_ALIVE, MEDIA_MAX_BYTES, MODEL, NUM_CTX, PORT, THINK, UPLOAD_DIR
+from memory import initialize
+from permissions import authorize_path
+from state import is_active
 
 UPLOAD_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".webp",
@@ -135,3 +135,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

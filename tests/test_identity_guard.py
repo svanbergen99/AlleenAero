@@ -1,8 +1,8 @@
-import unittest
+﻿import unittest
 from unittest.mock import patch
 
-from aero.agent import _identity_safe_reply
-from aero.identity_guard import collapses_identity, identity_policy_text
+from agent import _identity_safe_reply
+from identity_guard import collapses_identity, identity_policy_text
 
 
 class IdentityGuardTests(unittest.TestCase):
@@ -19,7 +19,7 @@ class IdentityGuardTests(unittest.TestCase):
         self.assertIn("Jij bent Aero", policy)
         self.assertIn("Qwen/Ollama", policy)
 
-    @patch("aero.agent.chat")
+    @patch("agent.chat")
     def test_guard_rewrites_collapsed_reply(self, mock_chat):
         mock_chat.return_value = {
             "content": "Ik ben Aero. Voor deze actie ontbreekt nog owner-approval."
@@ -34,7 +34,7 @@ class IdentityGuardTests(unittest.TestCase):
         )
         mock_chat.assert_called_once()
 
-    @patch("aero.agent.chat")
+    @patch("agent.chat")
     def test_guard_does_not_rewrite_normal_reply(self, mock_chat):
         result = _identity_safe_reply("Aero is klaar.", "SYSTEM")
         self.assertEqual(result, "Aero is klaar.")
@@ -43,3 +43,5 @@ class IdentityGuardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+

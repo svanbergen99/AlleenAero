@@ -1,4 +1,4 @@
-import re
+﻿import re
 
 # Aero is the user-facing local assistant. Qwen/Ollama are implementation details,
 # not the identity Aero should collapse into during normal operation.
@@ -43,3 +43,4 @@ def identity_policy_text():
         "- Als Bas expliciet vraagt welke techniek jou aandrijft, mag je correct zeggen dat Qwen via Ollama de "
         "inference-engine is, terwijl Aero de assistentlaag is.\n"
     )
+

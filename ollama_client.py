@@ -1,9 +1,9 @@
-import json
+﻿import json
 import time
 import urllib.error
 import urllib.request
 
-from .config import (
+from config import (
     KEEP_ALIVE,
     MODEL,
     NUM_CTX,
@@ -11,7 +11,7 @@ from .config import (
     REQUEST_TIMEOUT_SECONDS,
     THINK,
 )
-from .runtime_lock import runtime_lock
+from runtime_lock import runtime_lock
 
 
 def chat(messages, tools=None):
@@ -51,3 +51,4 @@ def chat(messages, tools=None):
                 time.sleep(1.5 * (attempt + 1))
 
     raise last_error or RuntimeError("Ollama request failed")
+

@@ -1,6 +1,6 @@
-import unittest
+﻿import unittest
 
-from aero.owner_tools import TOOL_SCHEMAS, select_tool_names
+from owner_tools import TOOL_SCHEMAS, select_tool_names
 
 
 class ToolSelectionTests(unittest.TestCase):
@@ -39,3 +39,4 @@ class ToolSelectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

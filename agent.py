@@ -1,13 +1,13 @@
-import json
+﻿import json
 import re
 
-from .config import MAX_AGENT_STEPS, MAX_TOOL_CALLS, ORIGIN_FILE, PROJECT_ROOT, RECENT_HISTORY_MESSAGES
-from .identity_guard import collapses_identity, identity_policy_text, rewrite_instruction
-from .memory import current_session_id, recent_messages, save_message
-from .ollama_client import chat
-from .owner_tools import execute, execute_approved, schemas, select_tool_names
-from .permissions import cancel_approval, consume_approval
-from .state import is_active, set_active
+from config import MAX_AGENT_STEPS, MAX_TOOL_CALLS, ORIGIN_FILE, PROJECT_ROOT, RECENT_HISTORY_MESSAGES
+from identity_guard import collapses_identity, identity_policy_text, rewrite_instruction
+from memory import current_session_id, recent_messages, save_message
+from ollama_client import chat
+from owner_tools import execute, execute_approved, schemas, select_tool_names
+from permissions import cancel_approval, consume_approval
+from state import is_active, set_active
 
 
 def _system_prompt(operator_authorized=False):
@@ -26,7 +26,7 @@ def _system_prompt(operator_authorized=False):
         + identity_policy_text()
         + "\nOPERATING PRINCIPLES:\n"
         + "- Je bent Aero. Antwoord direct op Bas zijn actuele verzoek.\n"
-        + "- Verzín geen systeemstatus, bestanden, geheugen of toolresultaten.\n"
+        + "- VerzÃ­n geen systeemstatus, bestanden, geheugen of toolresultaten.\n"
         + "- Technische modellen en runtimes zijn jouw motor, niet jouw identiteit.\n"
         + "- Gebruik tools wanneer actuele lokale informatie of een lokale actie nodig is.\n"
         + "- Een toolcall voert nooit meteen uit: hij maakt eerst een eenmalige owner-approval voor de exacte actie en argumenten.\n"
@@ -95,7 +95,7 @@ def _media_answer(result, question, system_prompt, session_id):
     prompt = (
         f"Vraag van Bas: {question or 'Analyseer deze bijlage.'}\n\n"
         f"Geverifieerde lokale analyse:\n{json.dumps(result, ensure_ascii=False)}\n\n"
-        "Beantwoord Bas nu op basis van deze geverifieerde analyse. Verzín niets buiten de resultaten."
+        "Beantwoord Bas nu op basis van deze geverifieerde analyse. VerzÃ­n niets buiten de resultaten."
     )
     assistant = chat([
         {"role": "system", "content": system_prompt},
@@ -212,3 +212,4 @@ def respond(message, operator_authorized=False):
     save_message(session_id, "user", command)
     save_message(session_id, "assistant", reply)
     return reply
+

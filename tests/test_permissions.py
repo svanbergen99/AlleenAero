@@ -1,9 +1,9 @@
-import tempfile
+﻿import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import aero.permissions as permissions
+import permissions as permissions
 
 
 class PermissionTests(unittest.TestCase):
@@ -33,3 +33,4 @@ class PermissionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

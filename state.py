@@ -1,7 +1,7 @@
-import json
+﻿import json
 import threading
 
-from .config import STATE_FILE
+from config import STATE_FILE
 
 _LOCK = threading.Lock()
 
@@ -25,3 +25,4 @@ def set_active(value):
         temp.write_text(json.dumps(state, indent=2), encoding="utf-8")
         temp.replace(STATE_FILE)
     return state["active"]
+

@@ -1,8 +1,8 @@
-import json
+﻿import json
 import threading
 from datetime import datetime, timezone
 
-from .config import DATA_DIR
+from config import DATA_DIR
 
 AUDIT_FILE = DATA_DIR / "audit.jsonl"
 _LOCK = threading.Lock()
@@ -31,3 +31,4 @@ def write(event, **fields):
     with _LOCK:
         with AUDIT_FILE.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
+

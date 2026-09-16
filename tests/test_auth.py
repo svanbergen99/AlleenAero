@@ -1,7 +1,7 @@
-import unittest
+﻿import unittest
 from types import SimpleNamespace
 
-from aero.auth import is_operator
+from auth import is_operator
 
 
 class AuthTests(unittest.TestCase):
@@ -15,3 +15,4 @@ class AuthTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
