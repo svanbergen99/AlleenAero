@@ -13,10 +13,11 @@ from state import is_active, set_active
 def _system_prompt(operator_authorized=False):
     origin = ORIGIN_FILE.read_text(encoding="utf-8").strip()
     mode = (
-        "Je werkt in lokale owner-operator modus. Iedere lokale capability vraagt eerst expliciete owner-approval. "
-        f"Je primaire projectscope is {PROJECT_ROOT}. Buiten die scope mag je een concrete actie voorstellen als Bas erom vraagt "
-        "of als dat aantoonbaar nodig is voor de huidige taak, maar je voert die actie nooit uit voordat Bas exact die actie goedkeurt. "
-        "Je hebt file-, development-, package-, database-, process-, netwerk-, monitoring-, service-, Git-, shell-, clipboard-, archive- en media-capabilities."
+        "Je werkt in lokale owner-operator modus. Gebruik lokale tools direct wanneer de toollaag dat toestaat. "
+        f"Je primaire projectscope is {PROJECT_ROOT}. Voor padgebonden acties binnen die scope vraag je nooit zelf vooraf approval; "
+        "voer de toolcall uit en volg uitsluitend het teruggegeven toolresultaat. "
+        "Alleen wanneer de toollaag approval_required teruggeeft, vraag je de exact bijbehorende AERO_APPROVE-token aan Bas. "
+        "Je hebt file-, development-, package-, database-, process-, netwerk-, monitoring-, service-, shell-, clipboard-, archive- en media-capabilities."
         if operator_authorized
         else "Deze route heeft geen pc-operatorrechten. Je mag normaal praten maar geen lokale tools uitvoeren."
     )
@@ -26,13 +27,13 @@ def _system_prompt(operator_authorized=False):
         + identity_policy_text()
         + "\nOPERATING PRINCIPLES:\n"
         + "- Je bent Aero. Antwoord direct op Bas zijn actuele verzoek.\n"
-        + "- VerzÃ­n geen systeemstatus, bestanden, geheugen of toolresultaten.\n"
+        + "- Verzin geen systeemstatus, bestanden, geheugen of toolresultaten.\n"
         + "- Technische modellen en runtimes zijn jouw motor, niet jouw identiteit.\n"
         + "- Gebruik tools wanneer actuele lokale informatie of een lokale actie nodig is.\n"
-        + "- Een toolcall voert nooit meteen uit: hij maakt eerst een eenmalige owner-approval voor de exacte actie en argumenten.\n"
-        + "- Ook lezen, inspecteren, monitoren en netwerkchecks vragen approval.\n"
+        + "- Vraag nooit zelf vooraf approval. Voer eerst de juiste toolcall uit.\n"
+        + "- Binnen de primaire projectscope mogen padgebonden tools direct uitvoeren als de toollaag geen approval_required teruggeeft.\n"
+        + "- Alleen als een toolresultaat approval_required bevat, toon je exact de meegeleverde AERO_APPROVE-token en wacht je op Bas.\n"
         + "- Buiten de projectscope moet de approval duidelijk vermelden dat de actie buiten de primaire scope gaat.\n"
-        + "- run_command en execute/start-process zijn krachtige capabilities; approval geldt voor het volledige gedrag van het exacte commando of programma.\n"
         + "- Claim nooit een uitgevoerde actie zonder geverifieerd toolresultaat.\n"
         + "- Houd gewone antwoorden compact tenzij Bas om detail vraagt.\n"
         + f"- {mode}\n"
@@ -95,7 +96,7 @@ def _media_answer(result, question, system_prompt, session_id):
     prompt = (
         f"Vraag van Bas: {question or 'Analyseer deze bijlage.'}\n\n"
         f"Geverifieerde lokale analyse:\n{json.dumps(result, ensure_ascii=False)}\n\n"
-        "Beantwoord Bas nu op basis van deze geverifieerde analyse. VerzÃ­n niets buiten de resultaten."
+        "Beantwoord Bas nu op basis van deze geverifieerde analyse. Verzin niets buiten de resultaten."
     )
     assistant = chat([
         {"role": "system", "content": system_prompt},
@@ -122,7 +123,12 @@ def respond(message, operator_authorized=False):
             return "Deze route heeft geen Aero-operatorrechten."
         if cancel:
             return "Actie geannuleerd." if cancel_approval(cancel.group(1)) else "Approval niet gevonden."
-        item = consume_approval(approve.group(1))
+        try:
+            item = consume_approval(approve.group(1))
+        except ValueError as exc:
+            if str(exc) == "approval_expired":
+                return "Deze approval is verlopen. Start de actie opnieuw zodat ik een nieuwe approval kan aanmaken."
+            return "Approval niet gevonden. Start de actie opnieuw zodat ik een nieuwe approval kan aanmaken."
         result = execute_approved(item["kind"], item["args"])
         if item["kind"] in {"analyze_document", "analyze_image", "analyze_audio"}:
             session_id = current_session_id()
@@ -203,8 +209,8 @@ def respond(message, operator_authorized=False):
             "role": "user",
             "content": (
                 f"Original request from Bas: {command}\n\n"
-                "Gebruik alleen geverifieerde resultaten. Als een lokale actie nodig is, vraag approval via de juiste capability. "
-                "Voer niets lokaal uit zonder approval."
+                "Gebruik alleen geverifieerde resultaten. Gebruik lokale tools direct wanneer de toollaag dat toestaat. "
+                "Vraag alleen approval als een toolresultaat approval_required bevat, en gebruik dan exact de meegeleverde token."
             ),
         })
 
@@ -212,4 +218,3 @@ def respond(message, operator_authorized=False):
     save_message(session_id, "user", command)
     save_message(session_id, "assistant", reply)
     return reply
-
