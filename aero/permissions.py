@@ -5,8 +5,9 @@ import time
 from pathlib import Path
 
 from .audit import write as audit
-from .config import APPROVAL_TTL_SECONDS, GRANTS_FILE, ROOT
+from .config import APPROVAL_TTL_SECONDS, GRANTS_FILE, PROJECT_ROOT
 
+ROOT = PROJECT_ROOT
 _PENDING = {}
 _LOCK = threading.Lock()
 
@@ -15,15 +16,23 @@ SENSITIVE_SUFFIXES = {".pem", ".key", ".pfx", ".p12"}
 SENSITIVE_PARTS = {".ssh", "credentials", "secrets", "tokens", "private_keys"}
 
 
-def _normalize(value):
+def normalize_path(value):
     path = Path(str(value or "")).expanduser()
     if not path.is_absolute():
         path = ROOT / path
     return path.resolve(strict=False)
 
 
+def _normalize(value):
+    return normalize_path(value)
+
+
 def _within(path, root):
     return path == root or root in path.parents
+
+
+def is_inside_project(value):
+    return _within(normalize_path(value), ROOT)
 
 
 def _assert_not_sensitive(path):
@@ -62,9 +71,8 @@ def list_grants():
 
 
 def authorize_path(value, write=False):
-    path = _normalize(value)
+    path = normalize_path(value)
     _assert_not_sensitive(path)
-
     if _within(path, ROOT):
         return path
 
@@ -75,8 +83,13 @@ def authorize_path(value, write=False):
             if write and grant["access"] != "read_write":
                 continue
             return path
-
     raise PermissionError(f"path_not_authorized:{needed}")
+
+
+def prepare_path_for_approval(value):
+    path = normalize_path(value)
+    _assert_not_sensitive(path)
+    return path
 
 
 def request_action(kind, args, summary):
@@ -118,7 +131,7 @@ def cancel_approval(approval_id):
 
 
 def grant_external_scope(path_value, access):
-    path = _normalize(path_value)
+    path = normalize_path(path_value)
     if not path.is_absolute() or path == Path(path.anchor):
         raise ValueError("invalid_external_scope")
     if access not in {"read", "read_write"}:
@@ -131,7 +144,7 @@ def grant_external_scope(path_value, access):
 
 
 def revoke_external_scope(path_value):
-    path = _normalize(path_value)
+    path = normalize_path(path_value)
     grants = _load_grants()
     updated = [g for g in grants if Path(g["path"]).resolve(strict=False) != path]
     _save_grants(updated)
