@@ -150,10 +150,7 @@ def execute(name, args):
         "syntax_check": (("path", args.get("path")),), "sqlite_query": (("path", args.get("path")),),
         "json_query": (("path", args.get("path")),), "zip_create": (("src", args.get("src")), ("dst", args.get("dst"))),
         "zip_extract": (("src", args.get("src")), ("dst", args.get("dst"))),
-        "npm_check": (("cwd", args.get("cwd") or PROJECT_ROOT),), "npm_install": (("cwd", args.get("cwd") or PROJECT_ROOT),),
-        "git_status": (("cwd", args.get("cwd") or PROJECT_ROOT),), "git_diff": (("cwd", args.get("cwd") or PROJECT_ROOT),),
-        "git_commit": (("cwd", args.get("cwd") or PROJECT_ROOT),), "git_pull": (("cwd", args.get("cwd") or PROJECT_ROOT),),
-        "git_push": (("cwd", args.get("cwd") or PROJECT_ROOT),), "run_command": (("cwd", args.get("cwd") or PROJECT_ROOT),),
+        "npm_check": (("cwd", args.get("cwd") or PROJECT_ROOT),), "npm_install": (("cwd", args.get("cwd") or PROJECT_ROOT),), "run_command": (("cwd", args.get("cwd") or PROJECT_ROOT),),
         "analyze_document": (("path_value", args.get("path_value")),), "analyze_image": (("path_value", args.get("path_value")),),
         "analyze_audio": (("path_value", args.get("path_value")),),
     }
@@ -173,8 +170,7 @@ def execute(name, args):
         "ping_host": "Ping host", "http_request": "Voer HTTP/API-request uit", "clipboard_read": "Lees klembord",
         "clipboard_write": "Schrijf klembord", "run_command": f"Voer shell-commando uit: {args.get('command', '')}",
         "service_status": "Lees Windows-service", "service_start": "Start Windows-service", "service_stop": "Stop Windows-service",
-        "service_restart": "Herstart Windows-service", "git_status": "Lees Git-status", "git_diff": "Lees Git-diff",
-        "git_commit": "Maak Git-commit", "git_pull": "Git pull", "git_push": "Git push",
+        "service_restart": "Herstart Windows-service",
         "analyze_document": "Analyseer document", "analyze_image": "Analyseer afbeelding", "analyze_audio": "Analyseer audio",
     }
     if name in {"env_get", "env_set", "env_delete"} and str(args.get("scope") or "dotenv") == "dotenv":
@@ -403,20 +399,6 @@ def _execute_approved(kind, args):
         elif kind == "service_stop": script = f"Stop-Service -Name '{name}' -Force -ErrorAction Stop; Get-Service -Name '{name}' | ConvertTo-Json -Compress"
         else: script = f"Restart-Service -Name '{name}' -Force -ErrorAction Stop; Get-Service -Name '{name}' | ConvertTo-Json -Compress"
         return _powershell(script, timeout=60)
-    if kind.startswith("git_"):
-        cwd = _path(args.get("cwd") or PROJECT_ROOT)
-        if kind == "git_status": command = ["git", "status", "--short", "--branch"]
-        elif kind == "git_diff": command = ["git", "diff", *(list(args.get("args") or []))]
-        elif kind == "git_commit":
-            message = str(args.get("message") or "").strip()
-            if not message: raise ValueError("commit_message_required")
-            if bool(args.get("all", False)):
-                add = _run(["git", "add", "-A"], cwd=cwd)
-                if add["returncode"] != 0: return add
-            command = ["git", "commit", "-m", message]
-        elif kind == "git_pull": command = ["git", "pull", *(list(args.get("args") or []))]
-        else: command = ["git", "push", *(list(args.get("args") or []))]
-        return _run(command, cwd=cwd, timeout=args.get("timeout", 180))
     if kind == "analyze_document": return analyze_document(args["path_value"], args.get("question", ""))
     if kind == "analyze_image": return analyze_image(args["path_value"], args.get("question", "Beschrijf wat je ziet."))
     if kind == "analyze_audio": return analyze_audio(args["path_value"], args.get("question", "Transcribeer deze audio."))
@@ -473,11 +455,6 @@ TOOL_SCHEMAS = {
     "service_start": _s("Windows-service starten.", {"name": {"type": "string"}}, ["name"]),
     "service_stop": _s("Windows-service stoppen.", {"name": {"type": "string"}}, ["name"]),
     "service_restart": _s("Windows-service herstarten.", {"name": {"type": "string"}}, ["name"]),
-    "git_status": _s("Git status lezen.", {"cwd": {"type": "string"}}, []),
-    "git_diff": _s("Git diff lezen.", {"cwd": {"type": "string"}, "args": {"type": "array", "items": {"type": "string"}}}, []),
-    "git_commit": _s("Git commit maken.", {"cwd": {"type": "string"}, "message": {"type": "string"}, "all": {"type": "boolean"}}, ["message"]),
-    "git_pull": _s("Git pull uitvoeren.", {"cwd": {"type": "string"}, "args": {"type": "array", "items": {"type": "string"}}, "timeout": {"type": "integer"}}, []),
-    "git_push": _s("Git push uitvoeren.", {"cwd": {"type": "string"}, "args": {"type": "array", "items": {"type": "string"}}, "timeout": {"type": "integer"}}, []),
     "analyze_document": _s("Document lokaal analyseren.", {"path_value": {"type": "string"}, "question": {"type": "string"}}, ["path_value"]),
     "analyze_image": _s("Afbeelding lokaal analyseren.", {"path_value": {"type": "string"}, "question": {"type": "string"}}, ["path_value"]),
     "analyze_audio": _s("Audio lokaal analyseren/transcriberen.", {"path_value": {"type": "string"}, "question": {"type": "string"}}, ["path_value"]),
@@ -509,7 +486,6 @@ def select_tool_names(message):
         (("clipboard", "klembord"), {"clipboard_read", "clipboard_write"}),
         (("shell", "terminal", "powershell", "cmd", "command", "commando"), {"run_command"}),
         (("service", "dienst", "windows service"), {"service_status", "service_start", "service_stop", "service_restart"}),
-        (("git", "commit", "pull", "push", "diff"), {"git_status", "git_diff", "git_commit", "git_pull", "git_push"}),
         (("document", "pdf", "docx"), {"analyze_document"}),
         (("afbeelding", "image", "foto", "screenshot"), {"analyze_image"}),
         (("audio", "voice", "stem", "wav", "mp3"), {"analyze_audio"}),
@@ -519,5 +495,5 @@ def select_tool_names(message):
     for words, tools in groups:
         if any(word in low for word in words): names.update(tools)
     if any(word in low for word in ("diagnose", "onderzoek", "probleem", "werkt niet", "alles controleren")):
-        names.update({"resource_monitor", "gpu_info", "list_processes", "port_check", "tail_log", "find_files", "search_text", "git_status", "syntax_check"})
+        names.update({"resource_monitor", "gpu_info", "list_processes", "port_check", "tail_log", "find_files", "search_text", "syntax_check"})
     return sorted(names)

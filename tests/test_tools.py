@@ -27,10 +27,14 @@ class ToolSelectionTests(unittest.TestCase):
             "zip_create", "zip_extract", "port_check", "ping_host", "http_request",
             "clipboard_read", "clipboard_write", "run_command",
             "service_status", "service_start", "service_stop", "service_restart",
-            "git_status", "git_diff", "git_commit", "git_pull", "git_push",
             "analyze_document", "analyze_image", "analyze_audio",
         }
         self.assertTrue(expected.issubset(TOOL_SCHEMAS.keys()), expected - TOOL_SCHEMAS.keys())
+
+    def test_git_capabilities_are_not_registered(self):
+        forbidden = {"git_status", "git_diff", "git_commit", "git_pull", "git_push"}
+        self.assertTrue(forbidden.isdisjoint(TOOL_SCHEMAS.keys()))
+        self.assertTrue(forbidden.isdisjoint(select_tool_names("git status commit pull push diff")))
 
 
 if __name__ == "__main__":
