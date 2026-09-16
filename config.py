@@ -1,4 +1,4 @@
-﻿import os
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -15,7 +15,7 @@ def _project_root():
     if configured:
         return Path(configured).expanduser().resolve(strict=False)
     if os.name == "nt":
-        return Path(r"D:\ProjectAI").resolve(strict=False)
+        return Path("D:\\").resolve(strict=False)
     return ROOT.resolve(strict=False)
 
 
@@ -43,5 +43,3 @@ MEDIA_MAX_BYTES = int(os.environ.get("AERO_MEDIA_MAX_BYTES", str(80 * 1024 * 102
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-
