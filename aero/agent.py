@@ -2,6 +2,7 @@ import json
 import re
 
 from .config import MAX_AGENT_STEPS, MAX_TOOL_CALLS, ORIGIN_FILE, PROJECT_ROOT, RECENT_HISTORY_MESSAGES
+from .identity_guard import collapses_identity, identity_policy_text, rewrite_instruction
 from .memory import current_session_id, recent_messages, save_message
 from .ollama_client import chat
 from .permissions import cancel_approval, consume_approval
@@ -21,7 +22,9 @@ def _system_prompt(operator_authorized=False):
     )
     return (
         origin
-        + "\n\nOPERATING PRINCIPLES:\n"
+        + "\n\n"
+        + identity_policy_text()
+        + "\nOPERATING PRINCIPLES:\n"
         + "- Je bent Aero. Antwoord direct op Bas zijn actuele verzoek.\n"
         + "- Verzín geen systeemstatus, bestanden, geheugen of toolresultaten.\n"
         + "- Technische modellen en runtimes zijn jouw motor, niet jouw identiteit.\n"
@@ -32,6 +35,37 @@ def _system_prompt(operator_authorized=False):
         + "- Voor execute_file geldt: approval voor uitvoering betekent ook approval voor het gedrag van dat script/programmaatje zelf.\n"
         + "- Houd gewone antwoorden compact tenzij Bas om detail vraagt.\n"
         + f"- {mode}\n"
+    )
+
+
+def _identity_safe_reply(reply, system_prompt):
+    text = str(reply or "").strip()
+    if not text or not collapses_identity(text):
+        return text
+
+    repair_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": rewrite_instruction(text)},
+    ]
+    for _ in range(2):
+        repaired = chat(repair_messages, None)
+        candidate = str(repaired.get("content") or "").strip()
+        if candidate and not collapses_identity(candidate):
+            return candidate
+        repair_messages.extend([
+            {"role": "assistant", "content": candidate},
+            {
+                "role": "user",
+                "content": (
+                    "Formuleer opnieuw als Aero. Benoem alleen de concrete operationele beperking. "
+                    "Gebruik geen taalmodel/AI-model-identiteitsdisclaimer en verzin geen capabilities."
+                ),
+            },
+        ])
+
+    return (
+        "Mijn antwoordguard heeft een onjuiste identiteitsformulering geblokkeerd. "
+        "Ik geef daarom geen ongeverifieerde claim door; benoem de concrete taak nogmaals zodat ik de operationele beperking kan vaststellen."
     )
 
 
@@ -87,6 +121,7 @@ def respond(message, operator_authorized=False):
         return "Aero staat in standby. Typ Activeer om mij te activeren."
 
     session_id = current_session_id()
+    system_prompt = _system_prompt(operator_authorized)
     media = _media_request(command)
     if media:
         if not operator_authorized:
@@ -106,18 +141,19 @@ def respond(message, operator_authorized=False):
             "Beantwoord Bas nu op basis van deze analyse. Verzín niets buiten de geverifieerde resultaten."
         )
         assistant = chat([
-            {"role": "system", "content": _system_prompt(True)},
+            {"role": "system", "content": system_prompt},
             *history,
             {"role": "user", "content": prompt},
         ])
         reply = str(assistant.get("content") or "").strip() or "Analyse voltooid."
+        reply = _identity_safe_reply(reply, system_prompt)
         save_message(session_id, "user", command)
         save_message(session_id, "assistant", reply)
         return reply
 
     history = recent_messages(session_id, RECENT_HISTORY_MESSAGES)
     messages = [
-        {"role": "system", "content": _system_prompt(operator_authorized)},
+        {"role": "system", "content": system_prompt},
         *history,
         {"role": "user", "content": command},
     ]
@@ -135,6 +171,7 @@ def respond(message, operator_authorized=False):
             reply = str(assistant.get("content") or "").strip()
             if not reply:
                 reply = "Ik kreeg geen bruikbaar modelantwoord terug."
+            reply = _identity_safe_reply(reply, system_prompt)
             save_message(session_id, "user", command)
             save_message(session_id, "assistant", reply)
             return reply
